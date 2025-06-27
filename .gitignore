@@ -192,3 +192,13 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+.env
+*venv/
+.idea/
+logs/
+.idea/workspace.xml
+.DS_STORE
+/certs
+*.pem
+.vscode/
