@@ -204,3 +204,4 @@ logs/
 .vscode/
 .streamlit/
 .devcontainer/
+test.py
