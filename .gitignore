@@ -203,3 +203,4 @@ logs/
 *.pem
 .vscode/
 .streamlit/
+.devcontainer/
