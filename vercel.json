@@ -2,17 +2,8 @@
     "version": 2,
     "builds": [
       {
-        "src": "visualization.py",
-        "use": "@vercel/python",
-        "config": {
-          "maxLambdaSize": "50mb"
-        }
-      }
-    ],
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "visualization.py"
+        "src": "Dockerfile",
+        "use": "@vercel/docker"
       }
     ]
   }
