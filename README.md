@@ -15,6 +15,13 @@ DB_HOST=your_database_host
 DB_PORT=your_database_port
 DB_DATABASE=your_database_name
 ```
+### 1.5 (optional) Load data 
+
+If you have the CSVs cached, then you can create a folder data/ from the root, and create two files:
+1. analysis_cleaned.csv
+2. analysis_staging.csv
+
+The code will automatically detect that you have a CSV in this location and will that to use the DF instead, which will be signifncatly faster than loading from Postgres.
 
 ### 2. Create Virtual Environment
 

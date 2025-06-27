@@ -11,6 +11,14 @@ from plotly.subplots import make_subplots
 
 load_dotenv('.env')
 
+# setting types: 
+LOAD_SETTINGS = ['csv', 'db']
+# if data is detected in data/analysis_cleaned.csv and data/analysis_staging.csv, use csv, otherwise use db
+if os.path.exists('data/analysis_cleaned.csv') and os.path.exists('data/analysis_staging.csv'):
+    CURRENT_LOAD_SETTING = 'csv'
+else:
+    CURRENT_LOAD_SETTING = 'db'
+
 # Create the engine
 def get_engine():
     # firstly tryt o use st.secrets, otherwise use.env
@@ -84,11 +92,6 @@ def run_query(query_filename, rawQuery=None, params=None, engine=None):
         print(f"Error while running query: {query_filename} -> {error}")
         print(f"Formatted query:\n{formatted_query}")
         raise error
-
-def load_data_in_chunks(query, chunksize=200_000):
-    engine = get_engine()
-    it = pd.read_sql(text(query), engine, chunksize=chunksize)
-    return pd.concat(it, ignore_index=True)
 
 def write_to_table(df, schema_name, table_name, engine=None):
     """
@@ -174,29 +177,37 @@ def detect_promotions(df):
 # 1. — Load your data — 
 # Replace with wherever you get your DataFrame
 @st.cache_data
-def load_data():
+def load_data(method=CURRENT_LOAD_SETTING):
     # This will only show progress when not cached
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
-    status_text.text('Loading cleaned analysis data...')
-    progress_bar.progress(25)
-    query = "SELECT * FROM temporary.analysis_cleaned"
-    # df = run_query(None, rawQuery=query)
-    df = load_data_in_chunks(query)
-    
-    status_text.text('Loading raw staging data...')
-    progress_bar.progress(75)
-    query = "SELECT * FROM temporary.analysis_staging"
-    # df_raw = run_query(None, rawQuery=query)
-    df_raw = load_data_in_chunks(query)
-    
-    status_text.text('Data processing complete!')
-    progress_bar.progress(100)
-    
-    # Clear the progress indicators
-    progress_bar.empty()
-    status_text.empty()
+    if method == 'csv':
+        status_text.text('Loading data from CSV...')
+        progress_bar.progress(25)
+        df = pd.read_csv('data/analysis_cleaned.csv')
+        progress_bar.progress(50)
+        df_raw = pd.read_csv('data/analysis_staging.csv')
+        progress_bar.progress(100)
+        return df, df_raw
+    else:
+        status_text.text('Loading data from DB...')
+        progress_bar.progress(25)
+        query = "SELECT * FROM temporary.analysis_cleaned"
+        # df = run_query(None, rawQuery=query)
+        df = run_query(None, rawQuery=query)
+        
+        status_text.text('Loading raw staging data...')
+        progress_bar.progress(75)
+        query = "SELECT * FROM temporary.analysis_staging"
+        # df_raw = run_query(None, rawQuery=query)
+        df_raw = run_query(None, rawQuery=query)
+        
+        status_text.text('Data processing complete!')
+        progress_bar.progress(100)
+        
+        # Clear the progress indicators
+        progress_bar.empty()
+        status_text.empty()
     
     return df, df_raw  
 

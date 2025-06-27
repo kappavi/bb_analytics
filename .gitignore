@@ -205,3 +205,4 @@ logs/
 .streamlit/
 .devcontainer/
 test.py
+data/
