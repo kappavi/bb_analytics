@@ -13,11 +13,19 @@ load_dotenv('.env')
 
 # Create the engine
 def get_engine():
-    db_user = os.getenv('DB_USER')
-    db_password = os.getenv('DB_PASSWORD') 
-    db_host = os.getenv('DB_HOST')
-    db_port = os.getenv('DB_PORT')
-    db_database = os.getenv('DB_DATABASE')
+    # firstly tryt o use st.secrets, otherwise use.env
+    if st.secrets:
+        db_user = st.secrets['DB_USER']
+        db_password = st.secrets['DB_PASSWORD']
+        db_host = st.secrets['DB_HOST']
+        db_port = st.secrets['DB_PORT']
+        db_database = st.secrets['DB_DATABASE']
+    else:   
+        db_user = os.getenv('DB_USER')
+        db_password = os.getenv('DB_PASSWORD') 
+        db_host = os.getenv('DB_HOST')
+        db_port = os.getenv('DB_PORT')
+        db_database = os.getenv('DB_DATABASE')
     
     connection_string = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_database}"
     
