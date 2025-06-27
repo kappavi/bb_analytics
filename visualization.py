@@ -84,7 +84,11 @@ def run_query(query_filename, rawQuery=None, params=None, engine=None):
         print(f"Error while running query: {query_filename} -> {error}")
         print(f"Formatted query:\n{formatted_query}")
         raise error
-    
+
+def load_data_in_chunks(query, chunksize=200_000):
+    engine = get_engine()
+    it = pd.read_sql(text(query), engine, chunksize=chunksize)
+    return pd.concat(it, ignore_index=True)
 
 def write_to_table(df, schema_name, table_name, engine=None):
     """
@@ -178,12 +182,14 @@ def load_data():
     status_text.text('Loading cleaned analysis data...')
     progress_bar.progress(25)
     query = "SELECT * FROM temporary.analysis_cleaned"
-    df = run_query(None, rawQuery=query)
+    # df = run_query(None, rawQuery=query)
+    df = load_data_in_chunks(query)
     
     status_text.text('Loading raw staging data...')
     progress_bar.progress(75)
     query = "SELECT * FROM temporary.analysis_staging"
-    df_raw = run_query(None, rawQuery=query)
+    # df_raw = run_query(None, rawQuery=query)
+    df_raw = load_data_in_chunks(query)
     
     status_text.text('Data processing complete!')
     progress_bar.progress(100)
@@ -193,6 +199,7 @@ def load_data():
     status_text.empty()
     
     return df, df_raw  
+
 
 # Main
 st.set_page_config(page_title="Item-Centric Promotion Analysis Dashboard", layout="wide")
