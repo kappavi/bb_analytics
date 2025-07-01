@@ -50,6 +50,14 @@ streamlit run visualization.py
 
 The dashboard will open in your default web browser, typically at `http://localhost:8501`.
 
+### 5. Run the Elasticity Analytics Dashboard
+
+```bash
+streamlit run visualization_elasticity.py
+```
+
+Another visualization that shows elasticity of items. You need the price_grouped_hmart.csv file to render data. Also typically at `http://localhost:8501`.
+
 ## Additional Files
 
 - `test_price_change_tracking.ipynb` - Avi's Jupyter notebook for detailed price change analysis

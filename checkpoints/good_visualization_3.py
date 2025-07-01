@@ -482,61 +482,87 @@ def create_enhanced_chart_with_promotions(data, metrics, title, item_data):
     )
     
     if has_price_metric and other_metrics:
-        # Get the actual max values for this specific item's data
+        # Get the data ranges for both axes to set appropriate tick spacing
         price_data = [row['active_price'] for _, row in item_data.iterrows() if not pd.isna(row['active_price'])]
-        financial_data = []
-        for metric in other_metrics:
-            financial_data.extend([row[metric] for _, row in item_data.iterrows() if not pd.isna(row[metric])])
         
-        if price_data and financial_data:
-            # Get actual max values for this item and add 10% padding
-            actual_price_max = max(price_data) * 1.1  # Add 10% padding
-            actual_financial_max = max(financial_data) * 1.1  # Add 10% padding
+        # Get other metrics data for left axis
+        other_data = []
+        for metric in other_metrics:
+            other_data.extend([row[metric] for _, row in item_data.iterrows() if not pd.isna(row[metric])])
+        
+        if price_data and other_data:
+            price_min, price_max = min(price_data), max(price_data)
+            other_min, other_max = min(other_data), max(other_data)
             
-            # Target: exactly 7 ticks (including 0) for both axes
-            target_ticks = 7
+            # Calculate appropriate tick spacing
+            price_range = price_max - price_min
+            other_range = other_max - other_min
             
-            # Calculate tick size for financial metrics to get exactly 7 ticks from 0 to padded_financial_max
-            financial_tick_calculated = actual_financial_max / (target_ticks - 1)  # -1 because we include 0
-            # Round to nice numbers for financial metrics
-            if financial_tick_calculated <= 100:
-                financial_tick = max(10, round(financial_tick_calculated / 10) * 10)
-            elif financial_tick_calculated <= 500:
-                financial_tick = max(50, round(financial_tick_calculated / 50) * 50)
-            elif financial_tick_calculated <= 1000:
-                financial_tick = max(100, round(financial_tick_calculated / 100) * 100)
-            elif financial_tick_calculated <= 5000:
-                financial_tick = max(500, round(financial_tick_calculated / 500) * 500)
-            elif financial_tick_calculated <= 10000:
-                financial_tick = max(1000, round(financial_tick_calculated / 1000) * 1000)
+            # Set tick spacing based on data range
+            if price_range > 0:
+                # For price: steps of $1 if range < $10, else $2, $5, $10, etc.
+                if price_range <= 10:
+                    price_tick = 1
+                elif price_range <= 20:
+                    price_tick = 2
+                elif price_range <= 50:
+                    price_tick = 5
+                else:
+                    price_tick = 10
             else:
-                financial_tick = max(2000, round(financial_tick_calculated / 2000) * 2000)
+                price_tick = 1
             
-            # Calculate tick size for price to get exactly 7 ticks from 0 to padded_price_max
-            price_tick_calculated = actual_price_max / (target_ticks - 1)  # -1 because we include 0
-            # Round to nice numbers for price
-            if price_tick_calculated <= 0.5:
-                price_tick = max(0.1, round(price_tick_calculated * 10) / 10)
-            elif price_tick_calculated <= 1:
-                price_tick = max(0.2, round(price_tick_calculated * 5) / 5)
-            elif price_tick_calculated <= 2:
-                price_tick = max(0.5, round(price_tick_calculated * 2) / 2)
-            elif price_tick_calculated <= 5:
-                price_tick = max(1, round(price_tick_calculated))
-            elif price_tick_calculated <= 10:
-                price_tick = max(2, round(price_tick_calculated / 2) * 2)
+            if other_range > 0:
+                # For financial metrics: steps of $1000 if range < $10k, else $2k, $5k, $10k, etc.
+                if other_range <= 10000:
+                    other_tick = 1000
+                elif other_range <= 20000:
+                    other_tick = 2000
+                elif other_range <= 50000:
+                    other_tick = 5000
+                elif other_range <= 100000:
+                    other_tick = 10000
+                else:
+                    other_tick = 20000
             else:
-                price_tick = max(5, round(price_tick_calculated / 5) * 5)
+                other_tick = 1000
             
-            # Calculate axis max values to ensure we have exactly 7 ticks and cover the padded data
-            financial_axis_max = financial_tick * (target_ticks - 1)
-            price_axis_max = price_tick * (target_ticks - 1)
+            # Calculate target number of ticks - use financial metrics as the base
+            target_ticks = 7  # Standard number of grid lines
             
-            # Ensure our calculated max is at least as large as the padded data max
-            while financial_axis_max < actual_financial_max:
-                financial_axis_max += financial_tick
-            while price_axis_max < actual_price_max:
-                price_axis_max += price_tick
+            # Calculate tick size for financial metrics to get exactly target_ticks
+            if other_range > 0:
+                other_tick_calculated = other_max / target_ticks
+                # Round to nice numbers
+                if other_tick_calculated <= 1000:
+                    other_tick = max(100, round(other_tick_calculated / 100) * 100)
+                elif other_tick_calculated <= 5000:
+                    other_tick = max(500, round(other_tick_calculated / 500) * 500)
+                elif other_tick_calculated <= 10000:
+                    other_tick = max(1000, round(other_tick_calculated / 1000) * 1000)
+                else:
+                    other_tick = max(2000, round(other_tick_calculated / 2000) * 2000)
+            else:
+                other_tick = 1000
+            
+            # Calculate tick size for price to get exactly target_ticks  
+            if price_range > 0:
+                price_tick_calculated = price_max / target_ticks
+                # Round to nice numbers
+                if price_tick_calculated <= 1:
+                    price_tick = max(0.5, round(price_tick_calculated * 2) / 2)
+                elif price_tick_calculated <= 5:
+                    price_tick = max(1, round(price_tick_calculated))
+                elif price_tick_calculated <= 10:
+                    price_tick = max(2, round(price_tick_calculated / 2) * 2)
+                else:
+                    price_tick = max(5, round(price_tick_calculated / 5) * 5)
+            else:
+                price_tick = 1
+            
+            # Calculate actual max values based on tick sizes to ensure same number of lines
+            other_axis_max = other_tick * target_ticks
+            price_axis_max = price_tick * target_ticks
             
             # Set the y-axis properties with shared soft gridlines
             fig.update_yaxes(
@@ -545,8 +571,8 @@ def create_enhanced_chart_with_promotions(data, metrics, title, item_data):
                 showgrid=True,
                 gridcolor="rgba(128, 128, 128, 0.2)",  # Soft gray with low opacity
                 gridwidth=1,
-                dtick=financial_tick,
-                range=[0, financial_axis_max],  # Start at 0, use calculated max
+                dtick=other_tick,
+                range=[0, other_axis_max],  # Start at 0, use calculated max
                 color="rgba(32, 32, 32, 1)"  # Darker gray axis text
             )
             fig.update_yaxes(
@@ -1274,27 +1300,22 @@ with customer_tab:
                     )
                 )
                 
-                # Calculate dynamic y-axis ranges based on this item's actual data
-                target_ticks = 7  # Exactly 7 ticks including 0
+                # Calculate synchronized y-axis ranges for both sides
+                target_ticks = 7  # Standard number of grid lines
                 
-                # Get actual max values for this specific item's daily data
-                daily_financial_data = []
+                # Get data ranges for both axes
+                financial_data = []
                 for metric in ['revenue', 'profit']:
                     if metric in daily_data.columns:
                         metric_values = daily_data[metric].dropna()
                         if not metric_values.empty:
-                            daily_financial_data.extend(metric_values.tolist())
+                            financial_data.extend(metric_values.tolist())
                 
-                if daily_financial_data:
-                    actual_daily_financial_max = max(daily_financial_data) * 1.1  # Add 10% padding
-                    # Calculate tick size to get exactly 7 ticks from 0 to padded max
-                    financial_tick_calculated = actual_daily_financial_max / (target_ticks - 1)  # -1 because we include 0
-                    # Round to nice numbers for financial metrics
-                    if financial_tick_calculated <= 100:
-                        financial_tick = max(10, round(financial_tick_calculated / 10) * 10)
-                    elif financial_tick_calculated <= 500:
-                        financial_tick = max(50, round(financial_tick_calculated / 50) * 50)
-                    elif financial_tick_calculated <= 1000:
+                if financial_data:
+                    financial_max = max(financial_data)
+                    # Calculate tick size for financial metrics
+                    financial_tick_calculated = financial_max / target_ticks
+                    if financial_tick_calculated <= 1000:
                         financial_tick = max(100, round(financial_tick_calculated / 100) * 100)
                     elif financial_tick_calculated <= 5000:
                         financial_tick = max(500, round(financial_tick_calculated / 500) * 500)
@@ -1303,13 +1324,10 @@ with customer_tab:
                     else:
                         financial_tick = max(2000, round(financial_tick_calculated / 2000) * 2000)
                     
-                    # Calculate axis max to ensure we have exactly 7 ticks and cover the padded data
-                    financial_axis_max = financial_tick * (target_ticks - 1)
-                    while financial_axis_max < actual_daily_financial_max:
-                        financial_axis_max += financial_tick
+                    financial_axis_max = financial_tick * target_ticks
                 else:
                     financial_tick = 1000
-                    financial_axis_max = 6000
+                    financial_axis_max = 7000
                 
                 # Set y-axis properties for financial metrics
                 fig.update_yaxes(
@@ -1323,19 +1341,14 @@ with customer_tab:
                     color="rgba(32, 32, 32, 1)"
                 )
                 
-                # Get price range for this specific item's daily data
+                # Get price range for synchronized y-axis scaling
                 if 'active_price' in daily_data.columns:
                     price_data_daily = daily_data['active_price'].dropna()
                     if not price_data_daily.empty:
-                        actual_daily_price_max = price_data_daily.max() * 1.1  # Add 10% padding
-                        # Calculate tick size to get exactly 7 ticks from 0 to padded price max
-                        price_tick_calculated = actual_daily_price_max / (target_ticks - 1)  # -1 because we include 0
-                        # Round to nice numbers for price
-                        if price_tick_calculated <= 0.5:
-                            price_tick = max(0.1, round(price_tick_calculated * 10) / 10)
-                        elif price_tick_calculated <= 1:
-                            price_tick = max(0.2, round(price_tick_calculated * 5) / 5)
-                        elif price_tick_calculated <= 2:
+                        daily_price_max = price_data_daily.max()
+                        # Calculate tick size for price to get exactly target_ticks
+                        price_tick_calculated = daily_price_max / target_ticks
+                        if price_tick_calculated <= 1:
                             price_tick = max(0.5, round(price_tick_calculated * 2) / 2)
                         elif price_tick_calculated <= 5:
                             price_tick = max(1, round(price_tick_calculated))
@@ -1344,10 +1357,7 @@ with customer_tab:
                         else:
                             price_tick = max(5, round(price_tick_calculated / 5) * 5)
                         
-                        # Calculate axis max to ensure we have exactly 7 ticks and cover the padded data
-                        price_axis_max = price_tick * (target_ticks - 1)
-                        while price_axis_max < actual_daily_price_max:
-                            price_axis_max += price_tick
+                        price_axis_max = price_tick * target_ticks
                         
                         fig.update_yaxes(
                             title_text="Active Price ($)", 
