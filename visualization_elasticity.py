@@ -11,6 +11,11 @@ def load_data():
     return pd.read_csv('data/price_grouped_hmart.csv')
 
 @st.cache_data
+def load_category_data():
+    """Load category aggregated data"""
+    return pd.read_csv('data/category_grouped_hmart.csv')
+
+@st.cache_data
 def compute_item_metrics(df):
     """Compute elasticity and price point metrics for all items"""
     metrics = []
@@ -129,6 +134,9 @@ def compute_category_elasticity(df, metrics_df, categories_map):
 
 df = load_data()
 metrics_df, categories_map = compute_item_metrics(df)
+
+# Load category aggregated data
+df_category_agg = load_category_data()
 
 # Filter out rows with NaN values in key columns to prevent undefined values in sorting
 metrics_df = metrics_df.dropna(subset=['elasticity', 'alpha', 'r_squared'])
@@ -306,10 +314,30 @@ with tab1:
         ax.plot(P_grid, Q_fit,   label='Log–Log fit',      color='C1', linewidth=3)
         # LOWESS curve
         ax.plot(P_lo,   Q_lo,    label='LOWESS smooth',    color='C2', linestyle='--', linewidth=3)
-        # annotate each optimum
-        ax.scatter([P_obs_best], [Q_obs_best], marker='o', color='C0', s=150, label='Obs-opt')
-        ax.scatter([P_fit_best], [Q_fit_best], marker='X', color='C1', s=150, label='Fit-opt')
-        ax.scatter([P_lo_best],  [Q_lo_best],  marker='D', color='C2', s=150, label='LOWESS-opt')
+        # annotate each optimum with arrows
+        # Calculate offset for arrow positioning (10% of axis range)
+        x_range = P_obs.max() - P_obs.min()
+        y_range = Q_obs.max() - Q_obs.min()
+        arrow_offset_x = x_range * 0.1
+        arrow_offset_y = y_range * 0.1
+        
+        # Observed optimum arrow
+        ax.annotate('Obs-opt', xy=(P_obs_best, Q_obs_best), 
+                   xytext=(P_obs_best + arrow_offset_x, Q_obs_best + arrow_offset_y),
+                   arrowprops=dict(arrowstyle='->', color='C0', lw=2),
+                   fontsize=12, color='C0', fontweight='bold')
+        
+        # Fitted optimum arrow
+        ax.annotate('Fit-opt', xy=(P_fit_best, Q_fit_best), 
+                   xytext=(P_fit_best - arrow_offset_x, Q_fit_best + arrow_offset_y),
+                   arrowprops=dict(arrowstyle='->', color='C1', lw=2),
+                   fontsize=12, color='C1', fontweight='bold')
+        
+        # LOWESS optimum arrow
+        ax.annotate('LOWESS-opt', xy=(P_lo_best, Q_lo_best), 
+                   xytext=(P_lo_best + arrow_offset_x, Q_lo_best - arrow_offset_y),
+                   arrowprops=dict(arrowstyle='->', color='C2', lw=2),
+                   fontsize=12, color='C2', fontweight='bold')
 
         ax.set_xlabel('Price', fontsize=14)
         ax.set_ylabel('Avg Units Sold', fontsize=14)
@@ -357,49 +385,224 @@ with tab1:
         """)
 
 with tab2:
-    st.subheader("Category Elasticity Analysis")
+    st.subheader("Category Time-Series Elasticity Analysis")
     
-    # Display category elasticity table
-    st.dataframe(
-        category_elasticity_df.round(3),
-        use_container_width=True,
-        height=300,
-        column_config={
-            "category": st.column_config.TextColumn("Category", width="medium"),
-            "item_count": st.column_config.NumberColumn("Unique Items Count", width="small"),
-            "avg_elasticity": st.column_config.NumberColumn("Avg Elasticity", width="medium", format="%.3f"),
-            "median_elasticity": st.column_config.NumberColumn("Median Elasticity", width="medium", format="%.3f"), 
-            "std_elasticity": st.column_config.NumberColumn("Std Elasticity", width="medium", format="%.3f"),
-            "weighted_avg_elasticity": st.column_config.NumberColumn("Weighted Avg Elasticity", width="medium", format="%.3f")
-        }
+    # Filter out NaN values from category data
+    df_category_clean = df_category_agg.dropna(subset=['avg_price', 'avg_qty'])
+    
+    # Category selection
+    available_categories = sorted(df_category_clean['specific_category'].unique())
+    selected_category = st.selectbox(
+        "Select a category to analyze:",
+        available_categories,
+        help="Choose a category to see its price-quantity relationship over time"
     )
     
-    # Category elasticity visualization
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # Filter data for selected category
+    cat_data = df_category_clean[df_category_clean['specific_category'] == selected_category].copy()
+    cat_data = cat_data.sort_values('day')
     
-    # Bar plot of average elasticity by category
-    ax1.barh(category_elasticity_df['category'], category_elasticity_df['avg_elasticity'])
-    ax1.set_xlabel('Average Elasticity')
-    ax1.set_title('Average Price Elasticity by Category')
-    ax1.axvline(x=-1, color='red', linestyle='--', alpha=0.7, label='Unit Elastic')
-    ax1.legend()
-    
-    # Scatter plot of elasticity vs item count
-    ax2.scatter(category_elasticity_df['item_count'], category_elasticity_df['avg_elasticity'], 
-                s=100, alpha=0.7)
-    ax2.set_xlabel('Number of Unique Items in Category')
-    ax2.set_ylabel('Average Elasticity')
-    ax2.set_title('Elasticity vs Category Size')
-    ax2.axhline(y=-1, color='red', linestyle='--', alpha=0.7, label='Unit Elastic')
-    ax2.legend()
-    
-    # Add category labels to scatter plot
-    for i, row in category_elasticity_df.iterrows():
-        ax2.annotate(row['category'], (row['item_count'], row['avg_elasticity']), 
-                    xytext=(5, 5), textcoords='offset points', fontsize=8, alpha=0.8)
-    
-    plt.tight_layout()
-    st.pyplot(fig)
+    if len(cat_data) < 3:
+        st.warning(f"Not enough data points for {selected_category}. Need at least 3 data points for analysis.")
+    else:
+        # Convert day to datetime for better plotting
+        cat_data['day'] = pd.to_datetime(cat_data['day'])
+        
+        # Calculate elasticity using log-log regression
+        try:
+            # Filter out zero or negative values for log transformation
+            valid_data = cat_data[(cat_data['avg_price'] > 0) & (cat_data['avg_qty'] > 0)].copy()
+            
+            if len(valid_data) < 3:
+                st.warning(f"Not enough valid data points for {selected_category} after filtering zero/negative values.")
+            else:
+                # Log transformation
+                valid_data['log_P'] = np.log(valid_data['avg_price'])
+                valid_data['log_Q'] = np.log(valid_data['avg_qty'])
+                
+                # Regression analysis
+                X = pd.DataFrame({'log_P': valid_data['log_P']})
+                X = sm.add_constant(X)
+                y = valid_data['log_Q']
+                model = sm.OLS(y, X).fit()
+                alpha = model.params['const']
+                beta = model.params['log_P']
+                r_squared = model.rsquared
+                
+                # Create price grid for fitted curve
+                P_grid = np.linspace(valid_data['avg_price'].min(), valid_data['avg_price'].max(), 300)
+                Q_fit = np.exp(alpha) * P_grid**beta
+                R_fit = P_grid * Q_fit
+                
+                # LOWESS smoothing
+                if len(valid_data) >= 5:  # Need enough points for LOWESS
+                    smoothed = lowess(valid_data['avg_qty'], valid_data['avg_price'], frac=0.6, return_sorted=True)
+                    P_lo, Q_lo = smoothed[:,0], smoothed[:,1]
+                    R_lo = P_lo * Q_lo
+                else:
+                    P_lo, Q_lo, R_lo = None, None, None
+                
+                # Find optima
+                # Observed optimum
+                valid_data['revenue'] = valid_data['avg_price'] * valid_data['avg_qty']
+                idx_obs = valid_data['revenue'].idxmax()
+                P_obs_best = valid_data.loc[idx_obs, 'avg_price']
+                Q_obs_best = valid_data.loc[idx_obs, 'avg_qty']
+                R_obs_best = valid_data.loc[idx_obs, 'revenue']
+                
+                # Fitted optimum
+                idx_fit = np.argmax(R_fit)
+                P_fit_best, Q_fit_best, R_fit_best = P_grid[idx_fit], Q_fit[idx_fit], R_fit[idx_fit]
+                
+                # LOWESS optimum
+                if P_lo is not None:
+                    idx_lo = np.argmax(R_lo)
+                    P_lo_best, Q_lo_best, R_lo_best = P_lo[idx_lo], Q_lo[idx_lo], R_lo[idx_lo]
+                
+                # Create visualizations
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Time series plot
+                    fig1, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10))
+                    
+                    # Price over time
+                    ax1.plot(cat_data['day'], cat_data['avg_price'], marker='o', linewidth=2, markersize=6)
+                    ax1.set_ylabel('Average Price ($)')
+                    ax1.set_title(f'{selected_category} - Price Over Time')
+                    ax1.tick_params(axis='x', rotation=45)
+                    ax1.grid(True, alpha=0.3)
+                    
+                    # Quantity over time
+                    ax2.plot(cat_data['day'], cat_data['avg_qty'], marker='s', color='orange', linewidth=2, markersize=6)
+                    ax2.set_ylabel('Average Quantity')
+                    ax2.set_title(f'{selected_category} - Quantity Over Time')
+                    ax2.tick_params(axis='x', rotation=45)
+                    ax2.grid(True, alpha=0.3)
+                    
+                    # Revenue over time
+                    cat_data['revenue'] = cat_data['avg_price'] * cat_data['avg_qty']
+                    ax3.plot(cat_data['day'], cat_data['revenue'], marker='D', color='green', linewidth=2, markersize=6)
+                    ax3.set_ylabel('Total Revenue ($)')
+                    ax3.set_xlabel('Date')
+                    ax3.set_title(f'{selected_category} - Revenue Over Time')
+                    ax3.tick_params(axis='x', rotation=45)
+                    ax3.grid(True, alpha=0.3)
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig1)
+                
+                with col2:
+                    # Demand curve analysis
+                    fig2, ax = plt.subplots(figsize=(12, 8))
+                    
+                    # Scatter plot of observed points
+                    ax.scatter(valid_data['avg_price'], valid_data['avg_qty'], 
+                              label='Observed data', color='C0', alpha=0.7, s=80)
+                    
+                    # Fitted curve
+                    ax.plot(P_grid, Q_fit, label='Log-Log fit', color='C1', linewidth=3)
+                    
+                    # LOWESS curve if available
+                    if P_lo is not None:
+                        ax.plot(P_lo, Q_lo, label='LOWESS smooth', color='C2', linestyle='--', linewidth=3)
+                    
+                    # Mark optima with arrows
+                    # Calculate offset for arrow positioning (10% of axis range)
+                    x_range = valid_data['avg_price'].max() - valid_data['avg_price'].min()
+                    y_range = valid_data['avg_qty'].max() - valid_data['avg_qty'].min()
+                    arrow_offset_x = x_range * 0.1
+                    arrow_offset_y = y_range * 0.1
+                    
+                    # Observed optimum arrow
+                    ax.annotate('Obs-opt', xy=(P_obs_best, Q_obs_best), 
+                               xytext=(P_obs_best + arrow_offset_x, Q_obs_best + arrow_offset_y),
+                               arrowprops=dict(arrowstyle='->', color='C0', lw=2),
+                               fontsize=12, color='C0', fontweight='bold')
+                    
+                    # Fitted optimum arrow
+                    ax.annotate('Fit-opt', xy=(P_fit_best, Q_fit_best), 
+                               xytext=(P_fit_best - arrow_offset_x, Q_fit_best + arrow_offset_y),
+                               arrowprops=dict(arrowstyle='->', color='C1', lw=2),
+                               fontsize=12, color='C1', fontweight='bold')
+                    
+                    # LOWESS optimum arrow (if available)
+                    if P_lo is not None:
+                        ax.annotate('LOWESS-opt', xy=(P_lo_best, Q_lo_best), 
+                                   xytext=(P_lo_best + arrow_offset_x, Q_lo_best - arrow_offset_y),
+                                   arrowprops=dict(arrowstyle='->', color='C2', lw=2),
+                                   fontsize=12, color='C2', fontweight='bold')
+                    
+                    ax.set_xlabel('Average Price ($)', fontsize=14)
+                    ax.set_ylabel('Average Quantity', fontsize=14)
+                    ax.set_title(f'{selected_category} - Demand Curve\n'
+                               f'Elasticity: {beta:.3f} | R²: {r_squared:.3f} | Data Points: {len(valid_data)}', 
+                               fontsize=16)
+                    ax.legend(fontsize=12)
+                    ax.tick_params(axis='both', labelsize=12)
+                    ax.grid(True, alpha=0.3)
+                    plt.tight_layout()
+                    st.pyplot(fig2)
+                
+                # Display analysis results
+                st.markdown("### Category Analysis Results")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("#### Optimal Pricing Analysis")
+                    st.markdown(f"""
+                    **Observed-optimum:**  
+                    • Price = ${P_obs_best:.2f}  
+                    • Quantity = {Q_obs_best:.2f}  
+                    • Revenue = ${R_obs_best:.2f}  
+
+                    **Fitted-optimum (log–log):**  
+                    • Price = ${P_fit_best:.2f}  
+                    • Quantity = {Q_fit_best:.2f}  
+                    • Revenue = ${R_fit_best:.2f}  
+                    """)
+                    
+                    if P_lo is not None:
+                        st.markdown(f"""
+                        **LOWESS-optimum:**  
+                        • Price = ${P_lo_best:.2f}  
+                        • Quantity = {Q_lo_best:.2f}  
+                        • Revenue = ${R_lo_best:.2f}
+                        """)
+                
+                with col2:
+                    st.markdown("#### Category Characteristics")
+                    elasticity_description = "Highly elastic" if beta < -1.5 else "Moderately elastic" if beta < -1 else "Inelastic"
+                    st.markdown(f"""
+                    **Category:** {selected_category}  
+                    **Price Elasticity:** {beta:.3f} ({elasticity_description})  
+                    **Model Fit (R²):** {r_squared:.3f}  
+                    **Data Points:** {len(valid_data)}  
+                    **Date Range:** {cat_data['day'].min().strftime('%Y-%m-%d')} to {cat_data['day'].max().strftime('%Y-%m-%d')}  
+                    **Price Range:** ${valid_data['avg_price'].min():.2f} - ${valid_data['avg_price'].max():.2f}  
+                    **Quantity Range:** {valid_data['avg_qty'].min():.2f} - {valid_data['avg_qty'].max():.2f}
+                    """)
+                
+                # Data table
+                st.markdown("### Raw Data")
+                display_data = cat_data[['day', 'avg_price', 'avg_qty', 'total_revenue']].copy()
+                display_data['day'] = display_data['day'].dt.strftime('%Y-%m-%d')
+                st.dataframe(
+                    display_data.round(2),
+                    use_container_width=True,
+                    column_config={
+                        "day": st.column_config.TextColumn("Date"),
+                        "avg_price": st.column_config.NumberColumn("Avg Price ($)", format="%.2f"),
+                        "avg_qty": st.column_config.NumberColumn("Avg Quantity", format="%.2f"),
+                        "total_revenue": st.column_config.NumberColumn("Total Revenue ($)", format="%.2f")
+                    }
+                )
+                
+        except Exception as e:
+            st.error(f"Error in elasticity analysis: {str(e)}")
+            st.write("Displaying raw data instead:")
+            st.dataframe(cat_data)
 
 with tab3:
     st.subheader("Categories Map")
